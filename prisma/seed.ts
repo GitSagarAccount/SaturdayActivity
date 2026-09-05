@@ -1,6 +1,6 @@
 import { PrismaClient, Gender, Preference } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, readdirSync, unlinkSync } from "fs";
 import path from "path";
 import { PREDEFINED_INTERESTS } from "../lib/interests";
 
@@ -42,9 +42,14 @@ const BIOS = [
   "Looking for my partner in crime.",
 ];
 
-const AVATAR_COLORS = [
-  "#fb7185", "#f472b6", "#c084fc", "#818cf8", "#60a5fa",
-  "#38bdf8", "#2dd4bf", "#4ade80", "#facc15", "#fb923c",
+const SAMPLE_CONVERSATION = [
+  { from: "them", body: "Hey! I saw we matched 🎉 how's your week going?" },
+  { from: "me", body: "Pretty good! Just got back from the gym. You?" },
+  { from: "them", body: "Nice! I'm just relaxing with some coffee. What kind of stuff are you into?" },
+  { from: "me", body: "Mostly music and traveling, trying to plan a trip soon actually" },
+  { from: "them", body: "No way, that's my favorite combo. Where are you thinking of going?" },
+  { from: "me", body: "Not sure yet, open to ideas. Any recommendations?" },
+  { from: "them", body: "You should ask me out for coffee and we can talk about it properly 😄" },
 ];
 
 function mulberry32(seed: number) {
@@ -57,12 +62,21 @@ function mulberry32(seed: number) {
   };
 }
 
-function makeAvatarSvg(initials: string, color: string) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
-    <rect width="400" height="400" fill="${color}"/>
-    <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="160" fill="white"
-      text-anchor="middle" dominant-baseline="central">${initials}</text>
-  </svg>`;
+async function downloadPhoto(uploadsDir: string, userId: string, index: number, gender: Gender, portraitIndex: number) {
+  const genderPath = gender === Gender.FEMALE ? "women" : "men";
+  const sourceUrl = `https://randomuser.me/api/portraits/${genderPath}/${portraitIndex}.jpg`;
+
+  try {
+    const res = await fetch(sourceUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const filename = `${userId}-${index}.jpg`;
+    writeFileSync(path.join(uploadsDir, filename), buffer);
+    return `/uploads/${filename}`;
+  } catch (err) {
+    console.warn(`  ! Failed to fetch photo for user (falling back to none): ${err}`);
+    return null;
+  }
 }
 
 async function main() {
@@ -75,6 +89,7 @@ async function main() {
 
   console.log("Clearing existing data...");
   await prisma.session.deleteMany();
+  await prisma.message.deleteMany();
   await prisma.match.deleteMany();
   await prisma.swipe.deleteMany();
   await prisma.userInterest.deleteMany();
@@ -84,6 +99,9 @@ async function main() {
 
   const uploadsDir = path.join(process.cwd(), "public", "uploads");
   mkdirSync(uploadsDir, { recursive: true });
+  for (const file of readdirSync(uploadsDir)) {
+    if (file !== ".gitkeep") unlinkSync(path.join(uploadsDir, file));
+  }
 
   const interests = await Promise.all(
     PREDEFINED_INTERESTS.map((name) => prisma.interest.create({ data: { name } }))
@@ -91,14 +109,22 @@ async function main() {
 
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
+  // Track which randomuser.me portrait indices we've used per gender so photos don't repeat.
+  const usedPortraits: Record<string, number> = { men: 0, women: 0 };
+  function nextPortraitIndex(gender: Gender) {
+    const key = gender === Gender.FEMALE ? "women" : "men";
+    const index = usedPortraits[key];
+    usedPortraits[key] += 1;
+    return index % 100;
+  }
+
+  console.log("Creating demo users with real stock photos (this takes a bit)...");
   const users = [];
   for (let i = 0; i < NAMES.length; i++) {
     const { name, gender } = NAMES[i];
     const age = 20 + Math.floor(rand() * 20);
     const interestedIn = pick([Preference.MALE, Preference.FEMALE, Preference.EVERYONE, Preference.EVERYONE]);
     const bio = pick(BIOS);
-    const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-    const initials = name.slice(0, 2).toUpperCase();
 
     const user = await prisma.user.create({
       data: {
@@ -112,11 +138,14 @@ async function main() {
       },
     });
 
-    const filename = `${user.id}-avatar.svg`;
-    writeFileSync(path.join(uploadsDir, filename), makeAvatarSvg(initials, color));
-    await prisma.photo.create({
-      data: { userId: user.id, url: `/uploads/${filename}`, order: 0 },
-    });
+    const photoCount = 2 + Math.floor(rand() * 3); // 2-4 photos
+    for (let p = 0; p < photoCount; p++) {
+      const portraitIndex = nextPortraitIndex(gender);
+      const url = await downloadPhoto(uploadsDir, user.id, p, gender, portraitIndex);
+      if (url) {
+        await prisma.photo.create({ data: { userId: user.id, url, order: p } });
+      }
+    }
 
     const chosenInterests = pickMany(interests, 3 + Math.floor(rand() * 4));
     await prisma.userInterest.createMany({
@@ -125,6 +154,32 @@ async function main() {
 
     users.push(user);
   }
+
+  console.log("Creating your profile (sagar)...");
+  const sagarPasswordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const sagar = await prisma.user.create({
+    data: {
+      username: "sagar",
+      passwordHash: sagarPasswordHash,
+      name: "Sagar",
+      age: 28,
+      gender: Gender.MALE,
+      interestedIn: Preference.EVERYONE,
+      bio: "Building things, exploring cities, always up for good food.",
+    },
+  });
+  for (let p = 0; p < 3; p++) {
+    const portraitIndex = nextPortraitIndex(Gender.MALE);
+    const url = await downloadPhoto(uploadsDir, sagar.id, p, Gender.MALE, portraitIndex);
+    if (url) {
+      await prisma.photo.create({ data: { userId: sagar.id, url, order: p } });
+    }
+  }
+  const sagarInterests = pickMany(interests, 5);
+  await prisma.userInterest.createMany({
+    data: sagarInterests.map((interest) => ({ userId: sagar.id, interestId: interest.id })),
+  });
+  users.push(sagar);
 
   console.log("Seeding swipes between demo users...");
   for (const fromUser of users) {
@@ -138,23 +193,60 @@ async function main() {
     }
   }
 
+  // Guarantee sagar has a couple of matches to chat with, regardless of random swipes above.
+  const sagarMatchPartners = pickMany(
+    users.filter((u) => u.id !== sagar.id),
+    2
+  );
+  for (const partner of sagarMatchPartners) {
+    await prisma.swipe.upsert({
+      where: { fromUserId_toUserId: { fromUserId: sagar.id, toUserId: partner.id } },
+      update: { action: "LIKE" },
+      create: { fromUserId: sagar.id, toUserId: partner.id, action: "LIKE" },
+    });
+    await prisma.swipe.upsert({
+      where: { fromUserId_toUserId: { fromUserId: partner.id, toUserId: sagar.id } },
+      update: { action: "LIKE" },
+      create: { fromUserId: partner.id, toUserId: sagar.id, action: "LIKE" },
+    });
+  }
+
   console.log("Creating matches for mutual likes...");
   const likeSwipes = await prisma.swipe.findMany({ where: { action: "LIKE" } });
   const likeSet = new Set(likeSwipes.map((s) => `${s.fromUserId}:${s.toUserId}`));
   const seenPairs = new Set<string>();
+  const createdMatches = [];
   for (const swipe of likeSwipes) {
     if (likeSet.has(`${swipe.toUserId}:${swipe.fromUserId}`)) {
       const [userAId, userBId] = [swipe.fromUserId, swipe.toUserId].sort();
       const pairKey = `${userAId}:${userBId}`;
       if (seenPairs.has(pairKey)) continue;
       seenPairs.add(pairKey);
-      await prisma.match
+      const match = await prisma.match
         .create({ data: { userAId, userBId } })
-        .catch(() => {});
+        .catch(() => null);
+      if (match) createdMatches.push(match);
     }
   }
 
-  console.log(`Seeded ${users.length} demo users. Login with username "demo1".."demo${users.length}" and password "${DEMO_PASSWORD}".`);
+  console.log("Seeding sample chat history for your matches...");
+  const sagarMatches = createdMatches.filter(
+    (m) => m.userAId === sagar.id || m.userBId === sagar.id
+  );
+  for (const match of sagarMatches) {
+    let ts = Date.now() - SAMPLE_CONVERSATION.length * 5 * 60 * 1000;
+    for (const line of SAMPLE_CONVERSATION) {
+      const senderId = line.from === "me" ? sagar.id : match.userAId === sagar.id ? match.userBId : match.userAId;
+      await prisma.message.create({
+        data: { matchId: match.id, senderId, body: line.body, createdAt: new Date(ts) },
+      });
+      ts += 5 * 60 * 1000;
+    }
+  }
+
+  console.log(
+    `Seeded ${users.length - 1} demo users (demo1..demo${users.length - 1}) and your account "sagar". Password for all: "${DEMO_PASSWORD}".`
+  );
 }
 
 main()

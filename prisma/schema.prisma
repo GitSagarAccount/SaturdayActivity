@@ -45,6 +45,7 @@ model User {
   matchesAsB Match[] @relation("MatchUserB")
 
   sessions Session[]
+  messages Message[]
 }
 
 model Interest {
@@ -96,7 +97,22 @@ model Match {
   userA User @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
   userB User @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
 
+  messages Message[]
+
   @@unique([userAId, userBId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  matchId   String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  match  Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
 }
 
 model Session {

@@ -8,6 +8,7 @@ export type CardUser = {
   photos: { url: string }[];
   interests: { interest: { name: string } }[];
   sharedCount?: number;
+  matched?: boolean;
 };
 
 export default function ProfileCard({ user }: { user: CardUser }) {
@@ -22,6 +23,11 @@ export default function ProfileCard({ user }: { user: CardUser }) {
           <div className="flex h-full w-full items-center justify-center text-rose-300">
             No photo
           </div>
+        )}
+        {user.matched && (
+          <span className="absolute left-2 top-2 rounded-full bg-green-500 px-2 py-0.5 text-xs font-medium text-white">
+            Matched
+          </span>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">

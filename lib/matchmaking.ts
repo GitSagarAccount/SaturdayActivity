@@ -68,15 +68,69 @@ export async function getWhoLikedMe(userId: string) {
     .map((l) => l.fromUser);
 }
 
-export async function getMatches(userId: string) {
+export async function getLikesSent(userId: string) {
   const matches = await prisma.match.findMany({
     where: { OR: [{ userAId: userId }, { userBId: userId }] },
+  });
+  const matchedIds = new Set(
+    matches.map((m) => (m.userAId === userId ? m.userBId : m.userAId))
+  );
+
+  const likes = await prisma.swipe.findMany({
+    where: { fromUserId: userId, action: "LIKE" },
     include: {
-      userA: { include: { photos: { orderBy: { order: "asc" } } } },
-      userB: { include: { photos: { orderBy: { order: "asc" } } } },
+      toUser: {
+        include: {
+          interests: { include: { interest: true } },
+          photos: { orderBy: { order: "asc" } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return matches.map((m) => (m.userAId === userId ? m.userB : m.userA));
+  return likes.map((l) => ({ ...l.toUser, matched: matchedIds.has(l.toUserId) }));
+}
+
+export async function getMatches(userId: string) {
+  const matches = await prisma.match.findMany({
+    where: { OR: [{ userAId: userId }, { userBId: userId }] },
+    include: {
+      userA: {
+        include: {
+          interests: { include: { interest: true } },
+          photos: { orderBy: { order: "asc" } },
+        },
+      },
+      userB: {
+        include: {
+          interests: { include: { interest: true } },
+          photos: { orderBy: { order: "asc" } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return matches.map((m) => ({
+    matchId: m.id,
+    user: m.userAId === userId ? m.userB : m.userA,
+  }));
+}
+
+export async function getMatchForUsers(matchId: string, userId: string) {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      userA: { include: { photos: { orderBy: { order: "asc" } } } },
+      userB: { include: { photos: { orderBy: { order: "asc" } } } },
+    },
+  });
+
+  if (!match || (match.userAId !== userId && match.userBId !== userId)) {
+    return null;
+  }
+
+  const otherUser = match.userAId === userId ? match.userB : match.userA;
+  return { match, otherUser };
 }

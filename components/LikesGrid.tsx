@@ -29,17 +29,8 @@ export default function LikesGrid({ initialLikes }: { initialLikes: CardUser[] }
     }
   }
 
-  if (likes.length === 0 && !matchName) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-        <p className="text-lg font-medium">No likes yet</p>
-        <p className="text-sm text-zinc-500">Keep swiping — you&apos;ll show up here once someone likes you.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6">
+    <section>
       {matchName && (
         <div className="mb-4 rounded-xl bg-rose-500 px-4 py-3 text-center text-white">
           🎉 It&apos;s a match with {matchName}! Check your Matches tab.
@@ -52,29 +43,35 @@ export default function LikesGrid({ initialLikes }: { initialLikes: CardUser[] }
         </div>
       )}
       <h1 className="mb-4 text-2xl font-semibold">People who liked you</h1>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {likes.map((user) => (
-          <div key={user.id} className="flex flex-col gap-2">
-            <ProfileCard user={user} />
-            <div className="flex gap-2">
-              <button
-                onClick={() => respond(user, "DISLIKE")}
-                disabled={pendingId === user.id}
-                className="flex-1 rounded-full border border-zinc-300 py-1.5 text-sm font-medium text-zinc-500 disabled:opacity-50 dark:border-zinc-700"
-              >
-                Pass
-              </button>
-              <button
-                onClick={() => respond(user, "LIKE")}
-                disabled={pendingId === user.id}
-                className="flex-1 rounded-full bg-rose-500 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              >
-                Like back
-              </button>
+      {likes.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Keep swiping — you&apos;ll show up here once someone likes you.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {likes.map((user) => (
+            <div key={user.id} className="flex flex-col gap-2">
+              <ProfileCard user={user} />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respond(user, "DISLIKE")}
+                  disabled={pendingId === user.id}
+                  className="flex-1 rounded-full border border-zinc-300 py-1.5 text-sm font-medium text-zinc-500 disabled:opacity-50 dark:border-zinc-700"
+                >
+                  Pass
+                </button>
+                <button
+                  onClick={() => respond(user, "LIKE")}
+                  disabled={pendingId === user.id}
+                  className="flex-1 rounded-full bg-rose-500 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Like back
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

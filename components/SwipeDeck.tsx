@@ -7,8 +7,20 @@ export default function SwipeDeck({ initialQueue }: { initialQueue: CardUser[] }
   const [queue, setQueue] = useState(initialQueue);
   const [pending, setPending] = useState(false);
   const [matchName, setMatchName] = useState<string | null>(null);
+  const [reloading, setReloading] = useState(false);
 
   const current = queue[0];
+
+  async function reload() {
+    setReloading(true);
+    try {
+      const res = await fetch("/api/discover");
+      const data = await res.json();
+      setQueue(data.queue ?? []);
+    } finally {
+      setReloading(false);
+    }
+  }
 
   async function swipe(action: "LIKE" | "DISLIKE") {
     if (!current || pending) return;
@@ -31,9 +43,16 @@ export default function SwipeDeck({ initialQueue }: { initialQueue: CardUser[] }
 
   if (!current) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-lg font-medium">No more profiles for now</p>
-        <p className="text-sm text-zinc-500">Check back later, or update your profile filters.</p>
+        <p className="text-sm text-zinc-500">Check back later, or reload to search again.</p>
+        <button
+          onClick={reload}
+          disabled={reloading}
+          className="rounded-full bg-rose-500 px-5 py-2 font-medium text-white transition-colors hover:bg-rose-600 disabled:opacity-60"
+        >
+          {reloading ? "Searching…" : "Reload search"}
+        </button>
       </div>
     );
   }
